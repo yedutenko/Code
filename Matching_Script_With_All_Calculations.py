@@ -1048,7 +1048,7 @@ def Detector_2D_Visualisation(Number,rf_size,W):
 ###each value of Delta. So you range in it rf_size by rf_size grid of rf_size by rf_size matrixes,
 ###where position whithin a grid, corresponds to the pixel in Detla
    fig, axes = plt.subplots(rf_size, rf_size, figsize=(rf_size**2, rf_size**2))
-    for k in range(Number,Number+1):
+   for k in range(Number,Number+1):
         fig.suptitle( 'DetectorNo'+str(k+1))
         for i in range(rf_size):
             for j in range(rf_size):
