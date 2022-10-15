@@ -22,12 +22,11 @@ def relu(x):
          y[i]=max(0,x[i])
     return (y)
 ###ZCA whitening:
-def zca_whiten(X):
+def zca_whiten(X,EPS=1e-6):
   ###Zero-phase component analysis whitening
     assert(X.ndim == 2)
     ###EPS - is a coefficient, which prevents high-order principal components from explosion.
     ###Note, that EPS lower than 1e-2 leads to explosion in learning weighs.
-    EPS = 1e-2
 
     #   covariance matrix
     X=X-np.mean(X)
@@ -41,6 +40,8 @@ def zca_whiten(X):
     W = np.dot(np.dot(E, D), E.T)
 
     X_white = np.dot(X, W)
+    X_white=X_white-np.mean(X_white)
+    X_white=X_white/np.std(X_white)
 
     return X_white
 
@@ -117,7 +118,7 @@ def Translation_Generator(NumEx,mu, sigma,ImageSize,UpSample,Filter,TrLim,rf_siz
     return ImagePair,Magnitude
 
 ###1D stimulus when we first create correlated world and than sample from it
-def Translation_World(signal_length,mu, sigma,smooth_const,smooth_std,MaxT,Jump_Translate, rf_size):
+def Translation_World(signal_length,mu, sigma,smooth_const,smooth_std,MaxT,Jump_Translate, rf_size,noise_std=0):
     ###The idea is:
     #1.Create correlated 1D world in superpixel (i.e.*UpSample) resolutionn
     #2. Pick small, downsampled images with size rf_size at position t and t+translation
@@ -162,10 +163,14 @@ def Translation_World(signal_length,mu, sigma,smooth_const,smooth_std,MaxT,Jump_
     NumEx=NumEx-MaxT
 
     x_t_concat=np.array(x_t_concat)
+    noise=np.random.normal(0,noise_std,x_t_concat.shape)
+    x_t_concat=x_t_concat+noise
     x_t_concat=zca_whiten(x_t_concat[:,:,0])
     x_t_concat=np.reshape(x_t_concat,[NumEx,rf_size,1])
 
     x_t_1_concat=np.array(x_t_1_concat)
+    noise=np.random.normal(0,noise_std,x_t_concat.shape)
+    x_t_1_concat=x_t_1_concat+noise
     x_t_1_concat=zca_whiten(x_t_1_concat[:,:,0])
     x_t_1_concat=np.reshape(x_t_1_concat,[NumEx,rf_size,1])   
     ImagePair=np.concatenate([x_t_1_concat,x_t_concat],axis=2)     
@@ -175,7 +180,7 @@ def Translation_World(signal_length,mu, sigma,smooth_const,smooth_std,MaxT,Jump_
 ###2D translations where at each step we generate correlated texture and than translate it 
 #  
 #A.2D translation where at each step we move either vertically or horizontally
-def Translation_Generator_2D_Train (NumEx,mu,sigma,ImageSize,rf_size, smooth_std,UpSample, TrLim, smoothing=1,image_whiten=1,set_whiten=1):
+def Translation_Generator_2D_Train (NumEx,mu,sigma,ImageSize,rf_size, smooth_std,UpSample, TrLim, smoothing=1,image_whiten=0,set_whiten=1):
     #The idea is:
     #1. Create correlated texture
     #.2. UpSample it
@@ -251,7 +256,7 @@ def Translation_Generator_2D_Train (NumEx,mu,sigma,ImageSize,rf_size, smooth_std
     return ImagePair, Magnitude
 
 #B. 2D translaton where eat each step we move both vertically and horizontally
-def Translation_Generator_2D_Valid (NumEx,mu,sigma,ImageSize,rf_size, smooth_std,UpSample, TrLim, smoothing=1,image_whiten=1,set_whiten=1):
+def Translation_Generator_2D_Valid (NumEx,mu,sigma,ImageSize,rf_size, smooth_std,UpSample, TrLim, smoothing=1,image_whiten=0,set_whiten=1):
     #The idea is:
     #1. Create correlated texture
     #.2. UpSample it
@@ -321,48 +326,9 @@ def Translation_Generator_2D_Valid (NumEx,mu,sigma,ImageSize,rf_size, smooth_std
     
     return ImagePair, Magnitude
 
-    #NumEx - number of training examples
-    #mu - image mean
-    #sigma - image standard deviation
-    #Filter - Filter for low-passing
-    #Rot_center - center of rotation
-    #RotLim - Maximal Angle of rotation
-    
-    Original=[]
-    Rotated=[]
-    Magnitude=[]
-    window = signal.windows.gaussian(smooth_const, std=smooth_std)
-    for i in range (NumEx):
-        Image=np.random.normal(mu,sigma,[rf_size**2,1])
-###smoothing
-        if smoothing==1:
-            Image=np.convolve(window,Image[:,0],mode='same')
-        Image=Image.reshape([rf_size,rf_size])
-        A=np.random.randint(low=-RotLim,high=RotLim+1,size=1)
-        A=int(A)
-        RotM = cv2.getRotationMatrix2D(center=Rot_center, angle=A, scale=1)
-        ImageR = cv2.warpAffine(Image,M=RotM,dsize=(rf_size,rf_size))
-        if image_whiten==1:
-            Image=zca_whiten(Image)
-            ImageR=zca_whiten(ImageR)        
-        Original.append(Image)
-        Rotated.append(ImageR)
-        Magnitude.append(A)
-    Original=np.array(Original)
-    Rotated=np.array(Rotated)
-    if set_whiten==1:
-        Original=np.reshape(Original,[NumEx,rf_size**2])
-        Original=zca_whiten(Original)
-        Rotated=np.reshape(Rotated,[NumEx,rf_size**2])
-        Rotated=zca_whiten(Rotated)
-    Original=np.reshape(Original,[NumEx,rf_size**2,1])
-    Rotated=np.reshape(Rotated,[NumEx,rf_size**2,1])
-    ImagePair=np.concatenate([Original,Rotated],axis=2)
-    return ImagePair, Magnitude
-
 ###2D translations where we create correlated world and than sample from it
 
-def Translation_Generator_2D_World (NumEx,mu,sigma,ImageSize,rf_size, smooth_std,UpSample, TrLim, smoothing=1,image_whiten=1,set_whiten=1):
+def Translation_Generator_2D_World (NumEx,mu,sigma,ImageSize,rf_size, smooth_std,UpSample, TrLim, smoothing=1,image_whiten=0,set_whiten=1):
   #The idea is:   
     #1.Create correlated 2D world in superpixel (i.e.*UpSample) resolutionn
     #2. Pick small, downsampled images with size rf_size at position t and t+translation
@@ -502,6 +468,100 @@ def Translation_Generator_2D_Stream(NumEx,mu,sigma,ImageSize,smooth_std,rf_size,
     Image_Stream=np.reshape(Image_Stream,[NumEx+1,rf_size**2,1])  
 
     return Image_Stream,Magnitude
+
+def Translation_Generator_2D_Stream_2(NumEx,L,mu,sigma,ImageSize,smooth_std,rf_size,UpSample,TrLim,smoothing=0,image_whiten=0,set_whiten=1):
+     ##Here we augmented original paper by Bahroun et al. by adding "stream of images" as a stimuli.
+     ##In the original paper stimuli at each training step consisted of pair image-translated image.
+     ###Here we generate sequence of images and train our network to take an image at time t, compare it 
+     ### with image at moment t-1 and find transformation operator.
+     ###At the moment it does only vertical or horizontal at each step, but it can be easily changed to simultaneous translations
+     ###So the idea is:
+     #1. Create correlated, superpixel 2D world
+     #2. Update coordinates
+     #3. Take downsampled (size=rf_size) image and coordinates
+     #4. Whiten
+     ###Parameters
+    #NumEx - number of training examples
+    #mu - image mean
+    #sigma - image standard deviation
+    ##ImageSize - size of the translated image, from each we latter take chunk with size rf_size
+    #TrLim - Maximal Amplitude of translation
+    #smoothing - decides whether or not make texture correlated
+    #image_whiten - determines whether separate textures should be whiten
+    #set_whiten - determines whether the entire stimuli set should be whiten 
+    from scipy.ndimage import gaussian_filter
+    Image_Stream=[]
+    Magnitude=[]
+    
+    Image=L
+    ###smoothing
+   
+  ###Starting coordinates
+    center_0=int(np.round((Image.shape[0]-rf_size*UpSample)/2))
+    center_1=int(np.round((Image.shape[1]-rf_size*UpSample)/2))
+    Coord=np.array((center_0,center_1))
+    Image_Stream.append(Image[center_0:center_0+rf_size*UpSample:UpSample,
+            center_1:center_1+rf_size*UpSample:UpSample])
+    ###Determine translation steps
+    for i in range (NumEx):
+
+        it=np.random.randint(low=0,high=2)
+        if it==0:
+            V=np.random.randint(low=-TrLim,high=TrLim+1)   ###vertical shift
+            H=0
+        elif it==1:
+            V=0
+            H=np.random.randint(low=-TrLim,high=TrLim+1)
+
+        Coord=Coord+(H,V)
+       ##Samle image
+        Image_T=Image[Coord[0]:Coord[0]+UpSample*rf_size:UpSample,
+        Coord[1]:Coord[1]+UpSample*rf_size:UpSample]
+        
+        if image_whiten==1:
+
+            Image_T=zca_whiten(Image_T)
+
+
+        Image_Stream.append(Image_T)
+        Magnitude.append([V,H])
+    
+    Image_Stream=np.array(Image_Stream)
+    Magnitude=np.array(Magnitude)
+
+    Image_Stream=np.reshape(Image_Stream,[NumEx+1,rf_size**2])
+    
+    if set_whiten==1:
+        Image_Stream=zca_whiten(Image_Stream)
+
+    Image_Stream=np.reshape(Image_Stream,[NumEx+1,rf_size**2,1])  
+
+    return Image_Stream,Magnitude
+
+###Translations of events
+def Event_Simulator(Image_Stream,event_trh,Magnitude):
+
+    ###event_trh- treshshold for generating an event
+    Image_Stream=Image_Stream*20
+    Image_Stream_temp=Image_Stream-np.amin(Image_Stream)+1
+
+    Detector_Voltage=np.log(Image_Stream_temp)
+
+    Event_Stream=np.zeros((Image_Stream.shape[0]-1,Image_Stream.shape[1]))
+
+    Voltage_base=Detector_Voltage[0]
+    for i in range(1,Detector_Voltage.shape[0]):
+        for j in range(Image_Stream.shape[1]):
+            if Detector_Voltage[i][j]-Voltage_base[j]>event_trh:
+                Event_Stream[i-1][j]=1
+                Voltage_base[j]=Detector_Voltage[i][j]
+            elif Detector_Voltage[i][j]-Voltage_base[j]<-event_trh:
+                Event_Stream[i-1][j]=-1
+                Voltage_base[j]=Detector_Voltage[i][j]
+    
+    Magnitude=Magnitude[1:]
+
+    return Detector_Voltage,Event_Stream,Magnitude
 
 ###Rotation  Generators 
 
@@ -870,6 +930,162 @@ def Train_Model_Stream (NumEx,mu,sigma,ImageSize,smooth_std,rf_size,UpSample,TrL
     Thetta=np.reshape(Thetta,[NumEx*N_Epoch,NChan]) 
     return W,M,Thetta,Thetta_hat,WT,MT,Magnitude_training
 
+def Train_Model_Stream_Event(NumEx,mu,sigma,ImageSize,smooth_std,rf_size,UpSample,event_trh,TrLim, NChan,DVal,reweight,N_Epoch,event_whiten=0,EPS=1e-2):
+###Slight adjustment of aforementioned script for the case of continuous images.
+###The main difference are:
+###Delta Xt are calculated on each step.
+###For each epoch you generate "new" world where motion occurs. This is necessary, to avoid situation where
+###as a result of movememnt coordinates of receptive field center get out of the "World"
+    #Magnitude - Magnitudes of the stimuli translations
+    #NumEx - number of training examples
+    #NChan - number of directions
+    #DVal - image dimension (i.e. 2D or 1D)
+    #reweight - constant for accumulation of neuronal activity
+
+
+    #t=ImagePair.shape
+    #t=t[1]
+    #Initialize
+    Thetta_hat=1000*np.ones((NChan,1))
+    Thetta=[]
+    W=np.random.normal(0,0,[rf_size**DVal,rf_size**DVal,NChan])
+    M=np.random.normal(0,0,[NChan,NChan])
+    np.fill_diagonal(M,0.)
+
+    ###
+   
+    Magnitude_training=[]
+    #Track changes in M and W
+    WT=[]
+    MT=[]
+    #Train
+    for ll in range(N_Epoch):
+        Image_Stream,Magnitude=Translation_Generator_2D_Stream(NumEx,mu,sigma,ImageSize,smooth_std,rf_size,UpSample,TrLim,smoothing=1,image_whiten=0,set_whiten=0)
+        Detector_Voltage,Event_Stream,Magnitude=Event_Simulator(Image_Stream,event_trh,Magnitude)
+        Event_Stream=np.reshape(Event_Stream,[NumEx,rf_size**2])
+        if event_whiten==1:
+            Event_Stream=zca_whiten(Event_Stream,EPS)
+        Event_Stream=np.reshape(Event_Stream,[NumEx,rf_size**2,1])
+        for i in range(1,NumEx):
+
+            Xt=Event_Stream[i-1]
+            Delta=Event_Stream[i]-Event_Stream[i-1]
+            Delta=Delta.T
+
+            Elayer=np.zeros((rf_size**DVal,NChan,1))  #weighting of pixel intenstisties  
+            for j in range(NChan):
+                Elayer[:,j]=np.dot(W[:,:,j],Xt)
+            Elayer=Elayer.reshape([rf_size**DVal,NChan])
+            Elayer=np.dot(Delta,Elayer).transpose() #Outer Product feature
+            Tet=np.zeros((NChan,1))
+
+            for k in range(200):     #Neuronal output
+                Tet=relu(Elayer-np.dot(M,Tet))
+
+            Magnitude_training.append(Magnitude[i-1])
+            Thetta_hat+=reweight*(Tet*Tet)
+            Thetta.append(Tet)
+
+            W,M=UpdateWeight(W,Tet,Thetta_hat,M,Delta,Xt,NChan,DVal,rf_size)
+
+            if i%100==0:
+                WT.append(W)
+                MT.append(M)
+    Magnitude_training=np.array(Magnitude_training)    
+    if NChan==2:
+        Magnitude_training=np.reshape(Magnitude_training,[Magnitude_training.shape[0],1])
+    Thetta=np.array(Thetta)        
+    Thetta=np.reshape(Thetta,[(NumEx-1)*N_Epoch,NChan]) 
+
+
+                #it=i
+            #lambda_regul=10e-6
+            #while (l2_x-l2_y)**2>lambda_regul and it<2:
+            #       kk=it
+            #       Tet[kk]=math.sqrt(abs(l2_x - np.linalg.norm(Tet,ord=2)**2))
+            #       l2_y=np.linalg.norm(Tet,ord=2)**2
+                   #it+=1
+    return W,M,Thetta,Thetta_hat,WT,MT,Magnitude_training
+
+def Train_Model_Stream_Event_2(NumEx,mu,sigma,ImageSize,smooth_std,rf_size,UpSample,event_trh,TrLim, NChan,DVal,reweight,N_Epoch,event_whiten=0,EPS=1e-2):
+###Slight adjustment of aforementioned script for the case of continuous images.
+###The main difference are:
+###Delta Xt are calculated on each step.
+###For each epoch you generate "new" world where motion occurs. This is necessary, to avoid situation where
+###as a result of movememnt coordinates of receptive field center get out of the "World"
+    #Magnitude - Magnitudes of the stimuli translations
+    #NumEx - number of training examples
+    #NChan - number of directions
+    #DVal - image dimension (i.e. 2D or 1D)
+    #reweight - constant for accumulation of neuronal activity
+
+
+    #t=ImagePair.shape
+    #t=t[1]
+    #Initialize
+    Thetta_hat=1000*np.ones((NChan,1))
+    Thetta=[]
+    W=np.random.normal(0,0,[rf_size**DVal,rf_size**DVal,NChan])
+    M=np.random.normal(0,0,[NChan,NChan])
+    np.fill_diagonal(M,0.)
+
+    ###
+   
+    Magnitude_training=[]
+    #Track changes in M and W
+    WT=[]
+    MT=[]
+    #Train
+    for ll in range(N_Epoch):
+        Image_Stream,Magnitude=Translation_Generator_2D_Stream(NumEx,mu,sigma,ImageSize,smooth_std,rf_size,UpSample,TrLim,smoothing=1,image_whiten=0,set_whiten=0)
+        Detector_Voltage,Event_Stream,Magnitude=Event_Simulator(Image_Stream,event_trh,Magnitude)
+        Event_Stream=np.reshape(Event_Stream,[NumEx,rf_size**2])
+        if event_whiten==1:
+            Event_Stream=zca_whiten(Event_Stream,EPS)
+        Event_Stream=np.reshape(Event_Stream,[NumEx,rf_size**2,1])
+        for i in range(1,NumEx):
+
+            Xt=Event_Stream[i-1]
+            Delta=Event_Stream[i]-Event_Stream[i-1]
+            Delta=Delta.T
+
+            Elayer=np.zeros((rf_size**DVal,NChan,1))  #weighting of pixel intenstisties  
+            for j in range(NChan):
+                Elayer[:,j]=np.dot(W[:,:,j],Xt)
+            Elayer=Elayer.reshape([rf_size**DVal,NChan])
+            Elayer=np.dot(Delta,Elayer).transpose() #Outer Product feature
+            Tet=np.zeros((NChan,1))
+
+            for k in range(200):     #Neuronal output
+                Tet=relu(Elayer-np.dot(M,Tet))
+            
+            l2_x=np.linalg.norm(np.outer(Delta,Xt),ord=2)**2
+            l2_y=np.linalg.norm(Tet,ord=2)**2
+            it=i-1
+            lambda_regul=1e-6
+            while ll==0 and (l2_x-l2_y)**2>lambda_regul and it<4:
+                kk=it
+                Tet[kk]=math.sqrt(abs(l2_x - np.linalg.norm(Tet,ord=2)**2))
+                l2_y=np.linalg.norm(Tet,ord=2)**2
+                it+=1
+
+            Magnitude_training.append(Magnitude[i-1])
+            Thetta_hat+=reweight*(Tet*Tet)
+            Thetta.append(Tet)
+
+            W,M=UpdateWeight(W,Tet,Thetta_hat,M,Delta,Xt,NChan,DVal,rf_size)
+
+            if i%100==0:
+                WT.append(W)
+                MT.append(M)
+    Magnitude_training=np.array(Magnitude_training)    
+    if NChan==2:
+        Magnitude_training=np.reshape(Magnitude_training,[Magnitude_training.shape[0],1])
+    Thetta=np.array(Thetta)        
+    Thetta=np.reshape(Thetta,[(NumEx-1)*N_Epoch,NChan]) 
+
+
+    return W,M,Thetta,Thetta_hat,WT,MT,Magnitude_training
 ###Scripts to Asses quality of training|performance
 #Training quality
 def Training_Quality(Magnitude,Thetta,test_size):
@@ -1048,8 +1264,372 @@ def Detector_2D_Visualisation(Number,rf_size,W):
 ###each value of Delta. So you range in it rf_size by rf_size grid of rf_size by rf_size matrixes,
 ###where position whithin a grid, corresponds to the pixel in Detla
    fig, axes = plt.subplots(rf_size, rf_size, figsize=(rf_size**2, rf_size**2))
-    for k in range(Number,Number+1):
+   for k in range(Number,Number+1):
         fig.suptitle( 'DetectorNo'+str(k+1))
         for i in range(rf_size):
             for j in range(rf_size):
                 sns.heatmap(np.reshape(W[rf_size*i+j,:,k],(rf_size,rf_size)),cmap="gray",ax=axes[i,j])
+def Translation_Generator_2D_Stream_3(NumEx,mu,sigma,ImageSize,smooth_traj,smooth_std,rf_size,UpSample,smoothing=1,image_whiten=1,set_whiten=1):
+     ##Here we augmented original paper by Bahroun et al. by adding "stream of images" as a stimuli.
+     ##In the original paper stimuli at each training step consisted of pair image-translated image.
+     ###Here we generate sequence of images and train our network to take an image at time t, compare it 
+     ### with image at moment t-1 and find transformation operator.
+     ###At the moment it does only vertical or horizontal at each step, but it can be easily changed to simultaneous translations
+     ###So the idea is:
+     #1. Create correlated, superpixel 2D world
+     #2. Update coordinates
+     #3. Take downsampled (size=rf_size) image and coordinates
+     #4. Whiten
+     ###Parameters
+    #NumEx - number of training examples
+    #mu - image mean
+    #sigma - image standard deviation
+    ##ImageSize - size of the translated image, from each we latter take chunk with size rf_size
+    #TrLim - Maximal Amplitude of translation
+    #smoothing - decides whether or not make texture correlated
+    #image_whiten - determines whether separate textures should be whiten
+    #set_whiten - determines whether the entire stimuli set should be whiten 
+    from scipy.ndimage import gaussian_filter
+    
+    trajectory=np.random.normal(mu,sigma,[NumEx,1])
+    trajectory=gaussian_filter(trajectory,smooth_traj)
+    trajectory=trajectory-np.mean(trajectory)
+    #trajectory=trajectory/np.std(trajectory)
+    trajectory=trajectory*5
+    trajectory=trajectory.astype(int)
+     
+    Image_Stream=[]
+
+    
+    Image=np.random.normal(mu,sigma,ImageSize)
+    ###smoothing
+    if smoothing==1:
+
+        Image=gaussian_filter(Image,smooth_std)
+        Image=Image-np.mean(Image)
+        Image=Image/np.std(Image)
+  ###Starting coordinates
+    center=int(np.round((ImageSize[0]-rf_size*UpSample)/2))
+    Coord=np.array((center,center))
+    Image_Stream.append(Image[center:center+rf_size*UpSample:UpSample,
+          center:center+rf_size*UpSample:UpSample])
+    ###Determine translation steps
+    for i in range (NumEx):
+
+        tran=np.array((trajectory[i][0],0))
+        Coord=Coord+tran
+        Image_T=Image[Coord[0]:Coord[0]+UpSample*rf_size:UpSample,
+        Coord[1]:Coord[1]+UpSample*rf_size:UpSample]
+
+        
+        if image_whiten==1:
+
+            Image_T=zca_whiten(Image_T)
+
+
+        Image_Stream.append(Image_T)
+        
+    
+    Image_Stream=np.array(Image_Stream)
+    Magnitude=trajectory
+
+    Image_Stream=np.reshape(Image_Stream,[NumEx+1,rf_size**2])
+    
+    if set_whiten==1:
+        Image_Stream=zca_whiten(Image_Stream)
+
+    Image_Stream=np.reshape(Image_Stream,[NumEx+1,rf_size**2,1])  
+
+    return Image_Stream,Magnitude
+
+def Train_Model_Stream_3 (NumEx,mu,sigma,ImageSize,smooth_traj,smooth_std,rf_size,UpSample, NChan,DVal,reweight,N_Epoch):
+###Slight adjustment of aforementioned script for the case of continuous images.
+###The main difference are:
+###Delta Xt are calculated on each step.
+###For each epoch you generate "new" world where motion occurs. This is necessary, to avoid situation where
+###as a result of movememnt coordinates of receptive field center get out of the "World"
+    #Magnitude - Magnitudes of the stimuli translations
+    #NumEx - number of training examples
+    #NChan - number of directions
+    #DVal - image dimension (i.e. 2D or 1D)
+    #reweight - constant for accumulation of neuronal activity
+
+
+    #t=ImagePair.shape
+    #t=t[1]
+    #Initialize
+    Thetta_hat=1000*np.ones((NChan,1))
+    Thetta=[]
+    W=np.random.normal(0,1,[rf_size**DVal,rf_size**DVal,NChan])
+    M=np.random.normal(0,1,[NChan,NChan])
+    np.fill_diagonal(M,0.)
+
+    ###
+   
+    Magnitude_training=[]
+    #Track changes in M and W
+    WT=[]
+    MT=[]
+    #Train
+    for ll in range(N_Epoch):
+        Image_Stream,Magnitude=Translation_Generator_2D_Stream_3(NumEx,mu,sigma,ImageSize,smooth_traj,smooth_std,rf_size,UpSample,smoothing=1,image_whiten=0,set_whiten=1)
+        
+        for i in range(1,NumEx+1):
+
+            Xt=Image_Stream[i-1]
+            Delta=Image_Stream[i]-Image_Stream[i-1]
+            Delta=Delta.T
+
+            Elayer=np.zeros((rf_size**DVal,NChan,1))  #weighting of pixel intenstisties  
+            for j in range(NChan):
+                Elayer[:,j]=np.dot(W[:,:,j],Xt)
+            Elayer=Elayer.reshape([rf_size**DVal,NChan])
+            Elayer=np.dot(Delta,Elayer).transpose() #Outer Product feature
+            Tet=np.zeros((NChan,1))
+
+            for k in range(200):     #Neuronal output
+                Tet=relu(Elayer-np.dot(M,Tet))
+
+            Magnitude_training.append(Magnitude[i-1])
+            Thetta_hat+=reweight*(Tet*Tet)
+            Thetta.append(Tet)
+
+            W,M=UpdateWeight(W,Tet,Thetta_hat,M,Delta,Xt,NChan,DVal,rf_size)
+
+            if i%100==0:
+                WT.append(W)
+                MT.append(M)
+    Magnitude_training=np.array(Magnitude_training)    
+    if NChan==2:
+        Magnitude_training=np.reshape(Magnitude_training,[Magnitude_training.shape[0],1])
+    Thetta=np.array(Thetta)        
+    Thetta=np.reshape(Thetta,[NumEx*N_Epoch,NChan]) 
+    return W,M,Thetta,Thetta_hat,WT,MT,Magnitude_training
+
+
+
+
+def Translation_Generator_2D_Stream_Naturel(My_Image,NumEx,rf_size,DVal,UpSample,TrLim,image_whiten=0,set_whiten=0):
+
+     ##Here we augmented original paper by Bahroun et al. by adding "stream of images" as a stimuli.
+     ##In the original paper stimuli at each training step consisted of pair image-translated image.
+     ###Here we generate sequence of images and train our network to take an image at time t, compare it 
+     ### with image at moment t-1 and find transformation operator.
+     ###At the moment it does only vertical or horizontal at each step, but it can be easily changed to simultaneous translations
+     ###So the idea is:
+     #1. Create correlated, superpixel 2D world
+     #2. Update coordinates
+     #3. Take downsampled (size=rf_size) image and coordinates
+     #4. Whiten
+     ###Parameters
+    #NumEx - number of training examples
+    #mu - image mean
+    #sigma - image standard deviation
+    ##ImageSize - size of the translated image, from each we latter take chunk with size rf_size
+    #TrLim - Maximal Amplitude of translation
+    #smoothing - decides whether or not make texture correlated
+    #image_whiten - determines whether separate textures should be whiten
+    #set_whiten - determines whether the entire stimuli set should be whiten 
+    from scipy.ndimage import gaussian_filter
+    from PIL import Image
+    Set_trans=np.arange(-TrLim,TrLim+1,1)
+    Set_trans=Set_trans[Set_trans!=0]
+    trajectory=np.random.choice(Set_trans,NumEx, replace=True)
+    trajectory=trajectory.astype(int)
+    #trajectory=trajectory/np.std(trajectory)
+
+    Image_Stream=[]
+    Magnitude=[]
+ 
+    ImageSize=My_Image.shape
+    ###smoothing
+  ###Starting coordinates
+    center=np.random.randint(250,np.amin(ImageSize)-250)
+    Coord=np.array((center,center))
+    Image_Stream.append(My_Image[center:center+rf_size*UpSample:UpSample,
+            center:center+rf_size*UpSample:UpSample])
+    ###Determine translation steps
+    for i in range (NumEx):
+
+        tran=np.array((trajectory[i],0))
+        Coord=Coord+tran
+        Image_T=My_Image[Coord[0]:Coord[0]+UpSample*rf_size:UpSample,
+        Coord[1]:Coord[1]+UpSample*rf_size:UpSample]
+
+        if image_whiten==1:
+
+            Image_T=zca_whiten(Image_T)
+
+
+        Image_Stream.append(Image_T)
+        
+    
+    Image_Stream=np.array(Image_Stream)
+    Magnitude=trajectory
+
+    Image_Stream=np.reshape(Image_Stream,[NumEx+1,rf_size**DVal])
+    
+    if set_whiten==1:
+        Image_Stream=zca_whiten(Image_Stream)
+
+    Image_Stream=np.reshape(Image_Stream,[NumEx+1,rf_size**DVal,1])  
+
+    return Image_Stream,Magnitude
+
+def Train_Model_Stream_Naturel (NumEx,rf_size,UpSample,TrLim,NChan,DVal,reweight,N_Epoch,image_whiten=0,set_whiten=0,s_gauss=2,world_whiten=0):
+###Slight adjustment of aforementioned script for the case of continuous images.
+###The main difference are:
+###Delta Xt are calculated on each step.
+###For each epoch you generate "new" world where motion occurs. This is necessary, to avoid situation where
+###as a result of movememnt coordinates of receptive field center get out of the "World"
+    #Magnitude - Magnitudes of the stimuli translations
+    #NumEx - number of training examples
+    #NChan - number of directions
+    #DVal - image dimension (i.e. 2D or 1D)
+    #reweight - constant for accumulation of neuronal activity
+
+    from PIL import Image
+    from scipy.ndimage import gaussian_filter
+
+    #t=ImagePair.shape
+    #t=t[1]
+    #Initialize
+    Thetta_hat=10000*np.ones((NChan,1))
+    Thetta=[]
+    W=np.random.normal(0,1,[rf_size**DVal,rf_size**DVal,NChan])
+    M=np.random.uniform(0.4,0.6,[NChan,NChan])
+    np.fill_diagonal(M,0.)
+    Delta_boss=[]
+    Xt_boss=[]
+    
+    ###
+   
+    Magnitude_training=[]
+    #Track changes in M and W
+    Wt=np.zeros([N_Epoch,rf_size**DVal,rf_size**DVal,NChan])
+    Mt=np.zeros([N_Epoch,NChan,NChan])
+    Image_Set=[]
+    for it in range(2,10):
+        if it<10:
+            it=str(0)+str(it)
+        temp=Image.open(("/home/myedut/Downloads/Bahroun Replication/Naturalistic_Images/UPenn_Images/DSC_00"+str(it)+".JPG"))
+        temp=np.array(temp)
+        temp=temp[:,:,0]
+        temp=temp-np.mean(temp)
+        temp=temp/np.std(temp)
+        Image_Set.append(temp)
+    it=np.random.randint(0,9)
+    My_Image=Image_Set[it]
+    My_Image=gaussian_filter(My_Image,s_gauss)
+    if world_whiten==1:
+        My_Image=zca_whiten(My_Image)
+    #Train
+    for ll in range(N_Epoch):
+        if DVal==2:
+
+            Image_Stream,Magnitude=Translation_Generator_2D_Stream_Naturel(My_Image,NumEx,rf_size,DVal,UpSample,TrLim,image_whiten=image_whiten,set_whiten=set_whiten)
+        elif DVal==1:
+            Image_Stream,Magnitude=Translation_Generator_1D_Stream_Naturel(My_Image,NumEx,rf_size,DVal,UpSample,TrLim,image_whiten=image_whiten,set_whiten=set_whiten)
+
+        for i in range(1,NumEx+1):
+            
+            Xt=Image_Stream[i-1]
+            Delta=Image_Stream[i]-Image_Stream[i-1]
+            Delta=Delta.T
+
+            Elayer=np.zeros((rf_size**DVal,NChan,1))  #weighting of pixel intenstisties  
+            for j in range(NChan):
+                Elayer[:,j]=np.dot(W[:,:,j],Xt)
+            Elayer=Elayer.reshape([rf_size**DVal,NChan])
+            Elayer=np.dot(Delta,Elayer).transpose() #Outer Product feature
+            Tet=np.zeros((NChan,1))
+
+            for k in range(200):     #Neuronal output
+                Tet=relu(Elayer-np.dot(M,Tet))
+
+            Magnitude_training.append(Magnitude[i-1])
+            Thetta_hat+=reweight*(Tet*Tet)
+            Thetta.append(Tet)
+            Delta_boss.append(Delta)
+            Xt_boss.append(Xt)
+            Wt[ll]=W
+            Mt[ll]=M
+            
+            W,M=UpdateWeight(W,Tet,Thetta_hat,M,Delta,Xt,NChan,DVal,rf_size)
+
+            
+           
+    Magnitude_training=np.array(Magnitude_training)    
+    if NChan==2:
+        Magnitude_training=np.reshape(Magnitude_training,[Magnitude_training.shape[0],1])
+    Thetta=np.array(Thetta)        
+    Thetta=np.reshape(Thetta,[NumEx*N_Epoch,NChan]) 
+    return W,M,Thetta,Thetta_hat,Wt,Mt,Magnitude_training,Image_Stream,set_whiten,Delta_boss,Xt_boss
+
+def Translation_Generator_1D_Stream_Naturel(My_Image,NumEx,rf_size,DVal,UpSample,TrLim,image_whiten=0,set_whiten=0):
+
+     ##Here we augmented original paper by Bahroun et al. by adding "stream of images" as a stimuli.
+     ##In the original paper stimuli at each training step consisted of pair image-translated image.
+     ###Here we generate sequence of images and train our network to take an image at time t, compare it 
+     ### with image at moment t-1 and find transformation operator.
+     ###At the moment it does only vertical or horizontal at each step, but it can be easily changed to simultaneous translations
+     ###So the idea is:
+     #1. Create correlated, superpixel 2D world
+     #2. Update coordinates
+     #3. Take downsampled (size=rf_size) image and coordinates
+     #4. Whiten
+     ###Parameters
+    #NumEx - number of training examples
+    #mu - image mean
+    #sigma - image standard deviation
+    ##ImageSize - size of the translated image, from each we latter take chunk with size rf_size
+    #TrLim - Maximal Amplitude of translation
+    #smoothing - decides whether or not make texture correlated
+    #image_whiten - determines whether separate textures should be whiten
+    #set_whiten - determines whether the entire stimuli set should be whiten 
+    from scipy.ndimage import gaussian_filter
+    from PIL import Image
+    Set_trans=np.arange(-TrLim,TrLim+1,1)
+    Set_trans=Set_trans[Set_trans!=0]
+    trajectory=np.random.choice(Set_trans,NumEx, replace=True)
+    trajectory=trajectory.astype(int)
+    #trajectory=trajectory/np.std(trajectory)
+
+    Image_Stream=[]
+    Magnitude=[]
+ 
+    ImageSize=My_Image.shape
+    ###smoothing
+  ###Starting coordinates
+    center=np.random.randint(500,np.amin(ImageSize)-500)
+    Coord=np.array((center,center))
+    Image_Stream.append(My_Image[center:center+rf_size*UpSample:UpSample,
+            center])
+    
+    ###Determine translation steps
+    for i in range (NumEx):
+
+        tran=np.array((trajectory[i],0))
+        Coord=Coord+tran
+        Image_T=My_Image[Coord[0]:Coord[0]+UpSample*rf_size:UpSample,
+        Coord[1]]
+
+        if image_whiten==1:
+
+            Image_T=zca_whiten(Image_T)
+
+
+        Image_Stream.append(Image_T)
+        
+    
+    Image_Stream=np.array(Image_Stream)
+    Magnitude=trajectory
+
+    Image_Stream=np.reshape(Image_Stream,[NumEx+1,rf_size**DVal])
+    
+    if set_whiten==1:
+        Image_Stream=zca_whiten(Image_Stream)
+
+    Image_Stream=np.reshape(Image_Stream,[NumEx+1,rf_size**DVal,1])  
+
+    return Image_Stream,Magnitude

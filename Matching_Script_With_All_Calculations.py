@@ -175,7 +175,7 @@ def Translation_World(signal_length,mu, sigma,smooth_const,smooth_std,MaxT,Jump_
 ###2D translations where at each step we generate correlated texture and than translate it 
 #  
 #A.2D translation where at each step we move either vertically or horizontally
-def Translation_Generator_2D_Train (NumEx,mu,sigma,ImageSize,rf_size, smooth_std,UpSample, TrLim, smoothing=1,image_whiten=1,set_whiten=1):
+def Translation_Generator_2D_Train (NumEx,mu,sigma,ImageSize,rf_size, smooth_std,UpSample, TrLim, smoothing=1,image_whiten=0,set_whiten=1):
     #The idea is:
     #1. Create correlated texture
     #.2. UpSample it
@@ -251,7 +251,7 @@ def Translation_Generator_2D_Train (NumEx,mu,sigma,ImageSize,rf_size, smooth_std
     return ImagePair, Magnitude
 
 #B. 2D translaton where eat each step we move both vertically and horizontally
-def Translation_Generator_2D_Valid (NumEx,mu,sigma,ImageSize,rf_size, smooth_std,UpSample, TrLim, smoothing=1,image_whiten=1,set_whiten=1):
+def Translation_Generator_2D_Valid (NumEx,mu,sigma,ImageSize,rf_size, smooth_std,UpSample, TrLim, smoothing=1,image_whiten=0,set_whiten=1):
     #The idea is:
     #1. Create correlated texture
     #.2. UpSample it
@@ -321,48 +321,9 @@ def Translation_Generator_2D_Valid (NumEx,mu,sigma,ImageSize,rf_size, smooth_std
     
     return ImagePair, Magnitude
 
-    #NumEx - number of training examples
-    #mu - image mean
-    #sigma - image standard deviation
-    #Filter - Filter for low-passing
-    #Rot_center - center of rotation
-    #RotLim - Maximal Angle of rotation
-    
-    Original=[]
-    Rotated=[]
-    Magnitude=[]
-    window = signal.windows.gaussian(smooth_const, std=smooth_std)
-    for i in range (NumEx):
-        Image=np.random.normal(mu,sigma,[rf_size**2,1])
-###smoothing
-        if smoothing==1:
-            Image=np.convolve(window,Image[:,0],mode='same')
-        Image=Image.reshape([rf_size,rf_size])
-        A=np.random.randint(low=-RotLim,high=RotLim+1,size=1)
-        A=int(A)
-        RotM = cv2.getRotationMatrix2D(center=Rot_center, angle=A, scale=1)
-        ImageR = cv2.warpAffine(Image,M=RotM,dsize=(rf_size,rf_size))
-        if image_whiten==1:
-            Image=zca_whiten(Image)
-            ImageR=zca_whiten(ImageR)        
-        Original.append(Image)
-        Rotated.append(ImageR)
-        Magnitude.append(A)
-    Original=np.array(Original)
-    Rotated=np.array(Rotated)
-    if set_whiten==1:
-        Original=np.reshape(Original,[NumEx,rf_size**2])
-        Original=zca_whiten(Original)
-        Rotated=np.reshape(Rotated,[NumEx,rf_size**2])
-        Rotated=zca_whiten(Rotated)
-    Original=np.reshape(Original,[NumEx,rf_size**2,1])
-    Rotated=np.reshape(Rotated,[NumEx,rf_size**2,1])
-    ImagePair=np.concatenate([Original,Rotated],axis=2)
-    return ImagePair, Magnitude
-
 ###2D translations where we create correlated world and than sample from it
 
-def Translation_Generator_2D_World (NumEx,mu,sigma,ImageSize,rf_size, smooth_std,UpSample, TrLim, smoothing=1,image_whiten=1,set_whiten=1):
+def Translation_Generator_2D_World (NumEx,mu,sigma,ImageSize,rf_size, smooth_std,UpSample, TrLim, smoothing=1,image_whiten=0,set_whiten=1):
   #The idea is:   
     #1.Create correlated 2D world in superpixel (i.e.*UpSample) resolutionn
     #2. Pick small, downsampled images with size rf_size at position t and t+translation
@@ -1056,23 +1017,28 @@ def Detector_2D_Visualisation(Number,rf_size,W):
 
 ###ACTUAL COMPUTATION STARTS HERE
 ##1.PARAMETERS
-NChan=4
-reweight=0.001
+NChan_trans=4
+NChan_rot=2
 DVal=2
+
+reweight=0.001
 NumEx=10000
-NumEx_Large=10000
+
 mu=0
 sigma=1
+
 ImageSize=np.array((1000,1000))
+
 UpSample=10###how much to upsample image to create subpixel translations
-TrLim=5
-rf_size=5
+TrLim=7
+rf_size=7
+
 smooth_const=40
-smooth_std=12
+smooth_std=10
 test_size=1000
 RotLim=8
 Rot_center=(rf_size,rf_size)
-N_Epoch=3
+N_Epoch=8
 TrLim_large=500
 
 
@@ -1086,12 +1052,12 @@ TrLim_large=500
 
 #2D Rotations
 #ImagePair,Magnitude=Rotation_Generator(NumEx,mu,sigma,rf_size,Rot_center,RotLim,smooth_const,smooth_std,image_whiten=0)
-#ImagePair,Magnitude=Rotation_Generator_World(NumEx,mu,sigma,rf_size,ImageSize,Rot_center,RotLim,smooth_std,smoothing=1,image_whiten=0,set_whiten=1)
+ImagePair_rot,Magnitude_rot=Rotation_Generator_World(NumEx,mu,sigma,rf_size,ImageSize,Rot_center,RotLim,smooth_std,smoothing=1,image_whiten=0,set_whiten=1)
 ##2D Translations
 
 #ImagePair,Magnitude=Translation_Generator_2D_Train(NumEx,mu,sigma,ImageSize,rf_size,smooth_std,UpSample,TrLim,smoothing=1,image_whiten=0,set_whiten=1)
 
-ImagePair,Magnitude=Translation_Generator_2D_World (NumEx,mu,sigma,ImageSize,rf_size,smooth_std,UpSample,TrLim,smoothing=1,image_whiten=0,set_whiten=1)
+ImagePair_trans,Magnitude_trans=Translation_Generator_2D_World (NumEx,mu,sigma,ImageSize,rf_size,smooth_std,UpSample,TrLim,smoothing=1,image_whiten=0,set_whiten=1)
 
 ####3. MODEL TRAINING
 
@@ -1099,15 +1065,18 @@ ImagePair,Magnitude=Translation_Generator_2D_World (NumEx,mu,sigma,ImageSize,rf_
 #W,M,Thetta,Thetta_hat,Delta,Xt,WT,MT,Magnitude_training=Train_Model (ImagePair,Magnitude,rf_size, NumEx,NChan,DVal,reweight,10,TrLim)
 
 ##Train 2D rotations
-#W,M,Thetta,Thetta_hat,Delta,Xt,WT,MT,Magnitude_training = Train_Model(ImagePair,Magnitude,rf_size,NumEx,NChan,DVal,reweight,N_Epoch,0)
+W_rot,M_rot,Thetta_rot,Thetta_hat_rot,Delta_rot,Xt_rot,WT_rot,MT,Magnitude_training_rot = Train_Model(ImagePair_rot,Magnitude_rot,rf_size,
+                                                NumEx,NChan_rot,DVal,reweight,N_Epoch,0)
 
 #Train 2D translations
-W,M,Thetta,Thetta_hat,Delta,Xt,WT,MT,Magnitude_training=Train_Model(ImagePair,Magnitude,rf_size,NumEx,NChan,DVal,reweight,N_Epoch,0)
+W_trans,M_trans,Thetta_trans,Thetta_hat_trans,Delta_trans,Xt_trans,WT_trans,MT_trans,Magnitude_training_trans=Train_Model(ImagePair_trans,Magnitude_trans,rf_size,NumEx,NChan_trans,DVal,reweight,N_Epoch,0)
 
 
 ####4. VERIFICATION OF THE TRAINING QUALITY
 
-Detector_Asses,Mag_test,Thetta_test=Training_Quality(Magnitude_training,Thetta,1000)
+Detector_Asses_rot,Mag_test_rot,Thetta_test_rot=Training_Quality(Magnitude_training_rot,Thetta_rot,1000)
+Detector_Asses_trans,Mag_test_trans,Thetta_test_trans=Training_Quality(Magnitude_training_trans,Thetta_trans,1000)
+
 
 ####5. VALIDATION FOR LARGE TRANSLATIONS/ROTATIONS
 
@@ -1130,29 +1099,6 @@ Thetta_Net_large,Magnitude_training_large=Eval_Model(ImagePair_Large,Magnitude_L
 ##Check quality of computation
 Response_Mean,Response_Error,Response_Dev,UniqueMag=Model_Validation(Thetta_Net_large,Magnitude_training_large)
 
-for i in range(UniqueMag.shape[1]):
-    plt.figure()
-    plt.plot(UniqueMag[:,i]/10,Response_Mean[:,i],'g-')
-    plt.fill_between(UniqueMag[:,i]/10,Response_Mean[:,i]-Response_Dev[:,i],Response_Mean[:,i]+Response_Dev[:,i],alpha=0.2)
-    plt.show()
-
-
-
-fig, axes = plt.subplots(rf_size, rf_size, figsize=(rf_size**2, rf_size**2))
-for k in range(1,2):
-    fig.suptitle( 'DetectorNo'+str(k+1))
-    for i in range(rf_size):
-        for j in range(rf_size):
-            sns.heatmap(np.reshape(W[rf_size*i+j,:,k],(rf_size,rf_size)),cmap="gray",ax=axes[i,j])
-            
-def Detector_2D_Visualisation(Number,rf_size):
-    fig, axes = plt.subplots(rf_size, rf_size, figsize=(rf_size**2, rf_size**2))
-    for k in range(Number,Number+1):
-        fig.suptitle( 'DetectorNo'+str(k+1))
-        for i in range(rf_size):
-            for j in range(rf_size):
-                sns.heatmap(np.reshape(W[rf_size*i+j,:,k],(rf_size,rf_size)),cmap="gray",ax=axes[i,j])
-            
 
 
     
